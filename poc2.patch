@@ -1,0 +1,65 @@
+@@ static void handle_msg(const canfd_raw_t *raw)
+-  switch (m.header.msg_info) {
+-  case 0x01: { /* First fragment (or Single w/len) */
+-    ...
+-    break;
+-  }
+-  case 0x02: /* Last fragment / single */
+-    ...
+-    break;
+-  default:
+-    printf("msg_type=0x%X (unhandled)\n", m.header.msg_info);
+-    break;
+-  }
++  uint8_t slot = m.type1.params.slot_number;      /* общий для всех типов */
++  asm_ctx_t *ac = &g.asm_tab[slot];
++
++  if (m.header.msg_info == 1) {           /* FIRST / SINGLE */
++      uint16_t dlen = ((m.type1.data_len_high & 0x0F) << 8) |
++                       m.type1.data_len_low;
++
++      /* сброс любого предыдущего незаконченного */
++      ac->busy = false;
++
++      size_t hdr = 6;                     /* bytes: 0,1 + 2-5 msg_param_t */
++      size_t payload = raw->len - hdr;
++      if (payload > sizeof(ac->buf))
++          payload = sizeof(ac->buf);      /* перестраховка */
++
++      memcpy(ac->buf, m.type1.data, payload);
++      ac->expected  = dlen;
++      ac->received  = payload;
++      ac->inc_next  = 0;
++      ac->busy      = true;
++
++      if (ac->received >= ac->expected) { /* «короткий» один кадр */
++          printf(">>> COMPLETE (single) %u bytes\n", ac->expected);
++          /* здесь вызывайте вашу бизнес-логику… */
++          ac->busy = false;
++      }
++  } else if (m.header.msg_info == 2 && ac->busy) {   /* CONT / LAST */
++      if (m.type2.inc_counter != ac->inc_next) {
++          printf("inc_counter mismatch (exp %u, got %u) – reset\n",
++                 ac->inc_next, m.type2.inc_counter);
++          ac->busy = false;
++          pthread_mutex_unlock(&g.lock);
++          return;
++      }
++      size_t hdr = 5;                     /* 0 + 1-4 msg_param_t */
++      size_t payload = raw->len - hdr;
++      if (ac->received + payload > sizeof(ac->buf))
++          payload = sizeof(ac->buf) - ac->received;
++
++      memcpy(ac->buf + ac->received, m.type2.data, payload);
++      ac->received += payload;
++      ac->inc_next = (ac->inc_next + 1) & 0x0F;
++
++      if (ac->received >= ac->expected) {
++          printf(">>> COMPLETE %u bytes (slot %u)\n",
++                 ac->expected, slot);
++          /* обработать ac->buf / ac->expected … */
++          ac->busy = false;
++      }
++  } else {
++      printf("msg_type=0x%X (unhandled or no ctx)\n", m.header.msg_info);
++  }

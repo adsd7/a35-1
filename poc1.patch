@@ -1,0 +1,7 @@
+@@
+ /* Global (for demo) context */
+ typedef struct {
+@@
+   can_message_t last[MAX_LAST_MSG];
++  asm_ctx_t asm_tab[30];        /* контексты сборки */
+ } ctx_t;

@@ -1,0 +1,28 @@
+{
+    "cmake.configureOnOpen": true,
+    "diffEditor.ignoreTrimWhitespace": false,
+    "editor.fontLigatures": true,
+    "editor.fontFamily": "'Fira Code'",
+    "cmake.pinnedCommands": [
+        "workbench.action.tasks.configureTaskRunner",
+        "workbench.action.tasks.runTask"
+    ],
+    "cmake.options.statusBarVisibility": "visible",
+    "C_Cpp.clang_format_path": "/usr/bin/clang-format",
+    "editor.formatOnSave": true,
+    "editor.rulers": [
+        100
+    ],
+    "clangd.path": "clangd",
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "C_Cpp.formatting": "clangFormat",
+    "C_Cpp.default.cStandard": "c23",
+    "cursor.cpp.disabledLanguages": [
+        "plaintext"
+    ],
+    "cursor.composer.shouldChimeAfterChatFinishes": true,
+    "editor.renderWhitespace": "all",
+    "cursor.cpp.enablePartialAccepts": true,
+    "cursor.composer.shouldAllowCustomModes": true,
+    "workbench.colorTheme": "Visual Studio Dark - C++"
+}
