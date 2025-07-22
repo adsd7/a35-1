@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -51,6 +52,26 @@ static ctx_t g; /* zero‑initialised */
 static void fatal(const char *msg) {
   perror(msg);
   exit(EXIT_FAILURE);
+}
+
+/* simple CRC-32 calculation (polynomial 0xEDB88320) */
+static uint32_t crc32_calc(const void *data, size_t len) {
+  static uint32_t tbl[256];
+  static int ready = 0;
+  if (!ready) {
+    for (uint32_t i = 0; i < 256; i++) {
+      uint32_t r = i;
+      for (int j = 0; j < 8; j++)
+        r = (r >> 1) ^ (0xEDB88320u & (-(int)(r & 1)));
+      tbl[i] = r;
+    }
+    ready = 1;
+  }
+  uint32_t crc = 0xFFFFFFFFu;
+  const uint8_t *p = data;
+  for (size_t i = 0; i < len; i++)
+    crc = tbl[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
+  return ~crc;
 }
 
 /* Send one CAN‑FD frame via proprietary IOCTL_WRITE */
@@ -142,6 +163,11 @@ static void handle_msg(const canfd_raw_t *raw) {
       ac->busy = false;
       global_module_info_t info;
       memcpy(&info, ac->buf, sizeof(info));
+      uint32_t crc_received;
+      memcpy(&crc_received, ac->buf + sizeof(info), sizeof(crc_received));
+      printf("crc_received: %08X\n", crc_received);
+      uint32_t crc_calculated = crc32_calc(ac->buf, sizeof(info));
+      printf("crc_calculated: %08X\n", crc_calculated);
 
       printf("boot_firmware_version: %u\n",
              info.boot_info.boot_firmware_version);
