@@ -53,6 +53,26 @@ static void fatal(const char *msg) {
   exit(EXIT_FAILURE);
 }
 
+/* simple CRC-32 calculation (polynomial 0xEDB88320) */
+static uint32_t crc32_calc(const void *data, size_t len) {
+  static uint32_t tbl[256];
+  static int ready = 0;
+  if (!ready) {
+    for (uint32_t i = 0; i < 256; i++) {
+      uint32_t r = i;
+      for (int j = 0; j < 8; j++)
+        r = (r >> 1) ^ (0xEDB88320u & (-(int)(r & 1)));
+      tbl[i] = r;
+    }
+    ready = 1;
+  }
+  uint32_t crc = 0xFFFFFFFFu;
+  const uint8_t *p = data;
+  for (size_t i = 0; i < len; i++)
+    crc = tbl[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
+  return ~crc;
+}
+
 /* Send one CAN‑FD frame via proprietary IOCTL_WRITE */
 static void can_write(uint32_t id, const void *buf, size_t len) {
   IOCTL_WRITE_ARG a = {.Id = id, .Len = (uint8_t)len};
@@ -114,7 +134,17 @@ static void handle_msg(const canfd_raw_t *raw) {
 
     if (ac->received >= ac->expected) { /* «короткий» один кадр */
       printf(">>> COMPLETE (single) %u bytes\n", ac->expected);
-      /* здесь вызывайте вашу бизнес-логику… */
+      if (ac->expected > 4) {
+        size_t data_len = ac->expected - 4;
+        uint32_t crc_msg;
+        memcpy(&crc_msg, ac->buf + data_len, sizeof(crc_msg));
+        uint32_t crc_calc = crc32_calc(ac->buf, data_len);
+        if (crc_msg != crc_calc) {
+          printf("CRC mismatch: got %08X calc %08X\n", crc_msg, crc_calc);
+        } else {
+          /* здесь вызывайте вашу бизнес-логику… */
+        }
+      }
       ac->busy = false;
     }
   } else if (m.header.msg_info == 2 && ac->busy) { /* CONT / LAST */
@@ -138,8 +168,24 @@ static void handle_msg(const canfd_raw_t *raw) {
     if (ac->received >= ac->expected) {
       printf(">>> COMPLETE: %u bytes expected, %u received (slot %u)\n",
              ac->expected, ac->received, slot);
-      /* обработать ac->buf / ac->expected … */
+
       ac->busy = false;
+      if (ac->expected <= sizeof(uint32_t)) {
+        printf("invalid length %u\n", ac->expected);
+        pthread_mutex_unlock(&g.lock);
+        return;
+      }
+
+      size_t data_len = ac->expected - sizeof(uint32_t);
+      uint32_t crc_msg;
+      memcpy(&crc_msg, ac->buf + data_len, sizeof(crc_msg));
+      uint32_t crc_calc = crc32_calc(ac->buf, data_len);
+      if (crc_msg != crc_calc) {
+        printf("CRC mismatch: got %08X calc %08X\n", crc_msg, crc_calc);
+        pthread_mutex_unlock(&g.lock);
+        return;
+      }
+
       global_module_info_t info;
       memcpy(&info, ac->buf, sizeof(info));
 
