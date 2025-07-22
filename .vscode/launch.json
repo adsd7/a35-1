@@ -5,7 +5,7 @@
         "name": "c Build&Debug",
         "type": "cppdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/a35_demo",
+        "program": "${workspaceFolder}/poc",
         "args": [],
         "stopAtEntry": true,
         "cwd": "${workspaceFolder}",
@@ -19,7 +19,8 @@
           "text": "-enable-pretty-printing",
           "ignoreFailures": true
         }
-      ]
+      ],
+      "preLaunchTask": "build"
       }
     ]
   }

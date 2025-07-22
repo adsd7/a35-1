@@ -1,3 +1,4 @@
+#include <stdint.h>
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
@@ -16,6 +17,7 @@
 #include <unistd.h>
 
 #include "include/ioctl_codes.h"
+#include "module.h"
 #include "poc.h"
 
 #define DEVICE_DEFAULT "/dev/can2"
@@ -40,6 +42,7 @@ typedef struct {
   pthread_mutex_t lock;
   unsigned int msg_cnt;
   can_message_t last[MAX_LAST_MSG];
+  asm_ctx_t asm_tab[30]; /* контексты сборки */
 } ctx_t;
 
 static ctx_t g; /* zero‑initialised */
@@ -73,27 +76,97 @@ static void handle_msg(const canfd_raw_t *raw) {
   printf("=== CAN msg #%u ===\n", g.msg_cnt);
   printf("ID=0x%03X len=%u\n", raw->id, raw->len);
 
+  uint8_t slot;
   switch (m.header.msg_info) {
-  case 0x01: { /* First fragment (or Single w/len) */
-    uint16_t dl = ((m.type1.data_len_high & 0x0F) << 8) | m.type1.data_len_low;
-    printf("FIRST: data_len=%u mt=0x%02X slot=%u cmd=0x%02X "
-           "ts=0x%04X\n",
-           dl, m.type1.params.module_type, m.type1.params.slot_number,
-           m.type1.params.command, m.type1.params.timestamp);
-    printf("data size: %lu\n", sizeof(m.type1.data));
+  case 0:
+    slot = m.type0.params.slot_number;
     break;
-  }
-  case 0x02: /* Last fragment / single */
-    printf("LAST:  mt=0x%02X slot=%u cmd=0x%02X ts=0x%04X inc_count=%u\n",
-           m.type2.params.module_type, m.type2.params.slot_number,
-           m.type2.params.command, m.type2.params.timestamp,
-           m.type2.inc_counter);
+  case 1:
+    slot = m.type1.params.slot_number;
+    break;
+  case 2:
+    slot = m.type2.params.slot_number;
     break;
   default:
-    printf("msg_type=0x%X (unhandled)\n", m.header.msg_info);
-    break;
+    printf("msg_type=0x%X (unhandled or no ctx)\n", m.header.msg_info);
+    return;
   }
 
+  asm_ctx_t *ac = &g.asm_tab[slot];
+
+  if (m.header.msg_info == 1) { /* FIRST / SINGLE */
+    uint16_t dlen =
+        ((m.type1.data_len_high & 0x0F) << 8) | m.type1.data_len_low;
+    printf("dlen: %u\n", dlen);
+
+    /* сброс любого предыдущего незаконченного */
+    ac->busy = false;
+
+    size_t payload = sizeof(m.type1.data);
+    if (payload > sizeof(ac->buf))
+      payload = sizeof(ac->buf); /* перестраховка */
+
+    memcpy(ac->buf, m.type1.data, payload);
+    ac->expected = dlen;
+    ac->received = payload;
+    ac->inc_next = 0;
+    ac->busy = true;
+
+    if (ac->received >= ac->expected) { /* «короткий» один кадр */
+      printf(">>> COMPLETE (single) %u bytes\n", ac->expected);
+      /* здесь вызывайте вашу бизнес-логику… */
+      ac->busy = false;
+    }
+  } else if (m.header.msg_info == 2 && ac->busy) { /* CONT / LAST */
+    if (m.type2.inc_counter != ac->inc_next) {
+      printf("inc_counter mismatch (exp %u, got %u) – reset\n", ac->inc_next,
+             m.type2.inc_counter);
+      ac->busy = false;
+      pthread_mutex_unlock(&g.lock);
+      return;
+    }
+    size_t hdr = 5; /* 0 + 1-4 msg_param_t */
+    size_t payload = raw->len - hdr;
+    if (ac->received + payload > sizeof(ac->buf))
+      payload = sizeof(ac->buf) - ac->received;
+
+    memcpy(ac->buf + ac->received, m.type2.data, payload);
+
+    ac->received += payload;
+    ac->inc_next = (ac->inc_next + 1) & 0x0F;
+
+    if (ac->received >= ac->expected) {
+      printf(">>> COMPLETE: %u bytes expected, %u received (slot %u)\n",
+             ac->expected, ac->received, slot);
+      /* обработать ac->buf / ac->expected … */
+      ac->busy = false;
+      global_module_info_t info;
+      memcpy(&info, ac->buf, sizeof(info));
+
+      printf("boot_firmware_version: %u\n",
+             info.boot_info.boot_firmware_version);
+      printf("hardware_version: %u\n", info.boot_info.hardware_version);
+      printf("manufacture_data: %u\n", info.boot_info.manufacture_data);
+      printf("module_type: %u\n", info.boot_info.module_type);
+      printf("serial_number: %.*s\n",
+             (int)sizeof(info.boot_info.serial_number_chars),
+             info.boot_info.serial_number_chars);
+      printf("firmware_ver: %u\n", info.appl_info.firmware_ver);
+      printf("fw_size: %u\n", info.appl_info.fw_size);
+      printf("open_crc: %08X\n", info.appl_info.open_crc);
+      printf("crypt_crc: %08X\n", info.appl_info.crypt_crc);
+      printf(
+          "compile date: %02u.%02u.%02u %02u:%02u:%02u\n",
+          info.appl_info.compile_param.day, info.appl_info.compile_param.month,
+          info.appl_info.compile_param.year, info.appl_info.compile_param.hour,
+          info.appl_info.compile_param.minute,
+          info.appl_info.compile_param.sec);
+      printf("slot_number: %u\n", info.slot_number);
+      printf("boot_mode: %02x\n", info.boot_mode);
+    }
+  } else {
+    printf("msg_type=0x%X (unhandled or no ctx)\n", m.header.msg_info);
+  }
   pthread_mutex_unlock(&g.lock);
 }
 
@@ -168,6 +241,8 @@ int main(int argc, char **argv) {
 
   signal(SIGINT, on_sig);
   signal(SIGTERM, on_sig);
+
+  printf("sizeof(global_module_info_t): %lu\n", sizeof(global_module_info_t));
 
   /* ---- send GET_MODULE_INFO ---- */
   can_message_t rq = {0};

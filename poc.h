@@ -76,7 +76,7 @@ typedef struct __attribute__((packed)) {
   msg_param_t params;
 
   // Байты 5-N: Продолжение данных
-  uint8_t data[]; // Flexible array member
+  uint8_t data[59]; // Flexible array member
 } can_msg_type2_t;
 
 // Объединение для удобной работы со всеми типами
@@ -108,5 +108,13 @@ typedef struct {
   uint16_t transmitter_id : 5; // ID передатчика
   uint16_t receiver_id : 5;    // ID приемника
 } can_id_fields_t;
+
+typedef struct {
+  uint16_t expected; // ожидаемая общая длина (из поля data_len)
+  uint16_t received; // сколько уже набрали
+  uint8_t buf[MAX_TOTAL_DATA_SIZE];
+  uint8_t inc_next; // ожидаемый inc_counter (0,1,2…)
+  bool busy;
+} asm_ctx_t;
 
 #endif // _POC_H
