@@ -22,28 +22,28 @@
 #include "poc.h"
 
 #define DEVICE_DEFAULT "/dev/can2"
-#define MAX_LAST_MSG 16
+#define MAX_LAST_MSG   16
 
 uint8_t raw_data[2048];
 
 /* "Raw" frame coming from driver */
 typedef struct {
   uint32_t id;
-  uint8_t len;
-  uint8_t data[64];
+  uint8_t  len;
+  uint8_t  data[64];
   uint64_t hw_ts;
 } canfd_raw_t;
 
 /* Global (for demo) context */
 typedef struct {
-  int fd;
+  int         fd;
   atomic_bool running;
-  pthread_t tid;
+  pthread_t   tid;
 
   pthread_mutex_t lock;
-  unsigned int msg_cnt;
-  can_message_t last[MAX_LAST_MSG];
-  asm_ctx_t asm_tab[30]; /* контексты сборки */
+  unsigned int    msg_cnt;
+  can_message_t   last[MAX_LAST_MSG];
+  asm_ctx_t       asm_tab[30]; /* контексты сборки */
 } ctx_t;
 
 static ctx_t g; /* zero‑initialised */
@@ -57,7 +57,7 @@ static void fatal(const char *msg) {
 /* simple CRC-32 calculation (polynomial 0xEDB88320) */
 static uint32_t crc32_calc(const void *data, size_t len) {
   static uint32_t tbl[256];
-  static int ready = 0;
+  static int      ready = 0;
   if (!ready) {
     for (uint32_t i = 0; i < 256; i++) {
       uint32_t r = i;
@@ -67,8 +67,9 @@ static uint32_t crc32_calc(const void *data, size_t len) {
     }
     ready = 1;
   }
-  uint32_t crc = 0xFFFFFFFFu;
-  const uint8_t *p = data;
+
+  uint32_t       crc = 0xFFFFFFFFu;
+  const uint8_t *p   = data;
   for (size_t i = 0; i < len; i++)
     crc = tbl[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
   return ~crc;
@@ -116,8 +117,7 @@ static void handle_msg(const canfd_raw_t *raw) {
   asm_ctx_t *ac = &g.asm_tab[slot];
 
   if (m.header.msg_info == 1) { /* FIRST / SINGLE */
-    uint16_t dlen =
-        ((m.type1.data_len_high & 0x0F) << 8) | m.type1.data_len_low;
+    uint16_t dlen = ((m.type1.data_len_high & 0x0F) << 8) | m.type1.data_len_low;
     printf("dlen: %u\n", dlen);
 
     /* сброс любого предыдущего незаконченного */
@@ -131,7 +131,7 @@ static void handle_msg(const canfd_raw_t *raw) {
     ac->expected = dlen;
     ac->received = payload;
     ac->inc_next = 0;
-    ac->busy = true;
+    ac->busy     = true;
 
     if (ac->received >= ac->expected) { /* «короткий» один кадр */
       printf(">>> COMPLETE (single) %u bytes\n", ac->expected);
@@ -140,13 +140,12 @@ static void handle_msg(const canfd_raw_t *raw) {
     }
   } else if (m.header.msg_info == 2 && ac->busy) { /* CONT / LAST */
     if (m.type2.inc_counter != ac->inc_next) {
-      printf("inc_counter mismatch (exp %u, got %u) – reset\n", ac->inc_next,
-             m.type2.inc_counter);
+      printf("inc_counter mismatch (exp %u, got %u) – reset\n", ac->inc_next, m.type2.inc_counter);
       ac->busy = false;
       pthread_mutex_unlock(&g.lock);
       return;
     }
-    size_t hdr = 5; /* 0 + 1-4 msg_param_t */
+    size_t hdr     = 5; /* 0 + 1-4 msg_param_t */
     size_t payload = raw->len - hdr;
     if (ac->received + payload > sizeof(ac->buf))
       payload = sizeof(ac->buf) - ac->received;
@@ -157,8 +156,8 @@ static void handle_msg(const canfd_raw_t *raw) {
     ac->inc_next = (ac->inc_next + 1) & 0x0F;
 
     if (ac->received >= ac->expected) {
-      printf(">>> COMPLETE: %u bytes expected, %u received (slot %u)\n",
-             ac->expected, ac->received, slot);
+      printf(">>> COMPLETE: %u bytes expected, %u received (slot %u)\n", ac->expected, ac->received,
+             slot);
       /* обработать ac->buf / ac->expected … */
       ac->busy = false;
       global_module_info_t info;
@@ -169,24 +168,20 @@ static void handle_msg(const canfd_raw_t *raw) {
       uint32_t crc_calculated = crc32_calc(ac->buf, sizeof(info));
       printf("crc_calculated: %08X\n", crc_calculated);
 
-      printf("boot_firmware_version: %u\n",
-             info.boot_info.boot_firmware_version);
+      printf("boot_firmware_version: %u\n", info.boot_info.boot_firmware_version);
       printf("hardware_version: %u\n", info.boot_info.hardware_version);
       printf("manufacture_data: %u\n", info.boot_info.manufacture_data);
       printf("module_type: %u\n", info.boot_info.module_type);
-      printf("serial_number: %.*s\n",
-             (int)sizeof(info.boot_info.serial_number_chars),
+      printf("serial_number: %.*s\n", (int)sizeof(info.boot_info.serial_number_chars),
              info.boot_info.serial_number_chars);
       printf("firmware_ver: %u\n", info.appl_info.firmware_ver);
       printf("fw_size: %u\n", info.appl_info.fw_size);
       printf("open_crc: %08X\n", info.appl_info.open_crc);
       printf("crypt_crc: %08X\n", info.appl_info.crypt_crc);
-      printf(
-          "compile date: %02u.%02u.%02u %02u:%02u:%02u\n",
-          info.appl_info.compile_param.day, info.appl_info.compile_param.month,
-          info.appl_info.compile_param.year, info.appl_info.compile_param.hour,
-          info.appl_info.compile_param.minute,
-          info.appl_info.compile_param.sec);
+      printf("compile date: %02u.%02u.%02u %02u:%02u:%02u\n", info.appl_info.compile_param.day,
+             info.appl_info.compile_param.month, info.appl_info.compile_param.year,
+             info.appl_info.compile_param.hour, info.appl_info.compile_param.minute,
+             info.appl_info.compile_param.sec);
       printf("slot_number: %u\n", info.slot_number);
       printf("boot_mode: %02x\n", info.boot_mode);
     }
@@ -216,7 +211,7 @@ static void *reader(void *arg) {
 
     for (;;) {
       IOCTL_READ_ARG tmp;
-      int rc = ioctl(g.fd, IOCTL_READ, &tmp);
+      int            rc = ioctl(g.fd, IOCTL_READ, &tmp);
       if (rc == 0) {
         canfd_raw_t r = {.id = tmp.Id, .len = tmp.Len};
         memcpy(r.data, tmp.Data, tmp.Len);
@@ -245,8 +240,7 @@ static void dump_stats(void) {
          g.msg_cnt);
   if (g.msg_cnt) {
     can_message_t *lm = &g.last[g.msg_cnt % MAX_LAST_MSG];
-    printf("last cmd=0x%02X slot=%u\n", lm->type2.params.command,
-           lm->type2.params.slot_number);
+    printf("last cmd=0x%02X slot=%u\n", lm->type2.params.command, lm->type2.params.slot_number);
   }
   pthread_mutex_unlock(&g.lock);
 }
@@ -271,11 +265,11 @@ int main(int argc, char **argv) {
   printf("sizeof(global_module_info_t): %lu\n", sizeof(global_module_info_t));
 
   /* ---- send GET_MODULE_INFO ---- */
-  can_message_t rq = {0};
-  rq.header.msg_info = 0; /* master single */
+  can_message_t rq            = {0};
+  rq.header.msg_info          = 0; /* master single */
   rq.type0.params.module_type = MODULE_DOR12_MODULE;
   rq.type0.params.slot_number = 6;
-  rq.type0.params.command = CMD_GET_MODULE_INFO;
+  rq.type0.params.command     = CMD_GET_MODULE_INFO;
 
   can_write(0x3F, &rq, sizeof(rq));
 

@@ -1,0 +1,25 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+# LLVM style differences:
+AlignConsecutiveAssignments:
+  Enabled: true
+  PadOperators: true
+
+AlignConsecutiveMacros:
+  Enabled: true
+  PadOperators: true
+
+AlignConsecutiveDeclarations:
+  Enabled: true
+  PadOperators: true
+
+AlignConsecutiveBitFields:
+  Enabled: true
+  PadOperators: true
+
+AllowShortEnumsOnASingleLine: false
+
+ColumnLimit: 100
+...
