@@ -8,12 +8,12 @@
         "workbench.action.tasks.runTask"
     ],
     "cmake.options.statusBarVisibility": "visible",
-    "C_Cpp.clang_format_path": "/usr/bin/clang-format",
+    "clangd.path": "clangd-17",
+    "C_Cpp.clang_format_path": "clang-format-17",
     "editor.formatOnSave": true,
     "editor.rulers": [
         100
     ],
-    "clangd.path": "clangd",
     "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
     "C_Cpp.formatting": "clangFormat",
     "C_Cpp.default.cStandard": "c23",

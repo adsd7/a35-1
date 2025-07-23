@@ -2,8 +2,6 @@
 build/
 poc
 
-# Ignore VSCode settings
-.vscode/
 
 # Ignore CMake generated files
 CMakeFiles/
