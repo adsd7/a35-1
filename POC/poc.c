@@ -1,8 +1,6 @@
 #define _GNU_SOURCE
 
-#include <errno.h>
 #include <fcntl.h>
-#include <inttypes.h>
 #include <poll.h>
 #include <pthread.h>
 #include <sched.h>
@@ -17,7 +15,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "include/ioctl_codes.h"
+#include "ioctl_codes.h"
 #include "module.h"
 #include "poc.h"
 

@@ -24,5 +24,6 @@
     "editor.renderWhitespace": "all",
     "cursor.cpp.enablePartialAccepts": true,
     "cursor.composer.shouldAllowCustomModes": true,
-    "workbench.colorTheme": "Visual Studio Dark - C++"
+    "workbench.colorTheme": "Visual Studio Dark - C++",
+    "C_Cpp.default.compileCommands": "/home/user/a35/build/compile_commands.json"
 }
