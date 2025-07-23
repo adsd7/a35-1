@@ -24,3 +24,6 @@ Makefile
 *.swp
 .DS_Store
 Thumbs.db
+
+# cache
+.cache/
