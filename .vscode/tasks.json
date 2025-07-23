@@ -4,8 +4,8 @@
     {
       "label": "build",
       "type": "shell",
-      "command": "gcc",
-      "args": ["-o", "poc", "poc.c", "-lpthread", "-O0", "-g"],
+      "command": "cmake",
+      "args": ["--build", "build"],
       "problemMatcher": ["$gcc"]
     }
   ]
