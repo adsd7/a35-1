@@ -52,6 +52,14 @@ static void fatal(const char *msg) {
   exit(EXIT_FAILURE);
 }
 
+void stop_reader(void) {
+  atomic_store(&g.running, false);
+  /* Будим poll, чтобы он не ждал оставшиеся 100 мс */
+  pthread_kill(g.tid, SIGUSR1); // любой пустой сигнал, не маскируемый poll'ом
+}
+
+static void dummy(int s) { (void)s; }
+
 /* simple CRC-32 calculation (polynomial 0xEDB88320) */
 static uint32_t crc32_calc(const void *data, size_t len) {
   static uint32_t tbl[256];
@@ -93,6 +101,7 @@ static void handle_msg(const canfd_raw_t *raw) {
   g.msg_cnt++;
   g.last[g.msg_cnt % MAX_LAST_MSG] = m;
 
+  printf("msg_info: %u\n", m.header.msg_info);
   printf("=== CAN msg #%u ===\n", g.msg_cnt);
   printf("ID=0x%03X len=%u\n", raw->id, raw->len);
 
@@ -259,17 +268,22 @@ int main(int argc, char **argv) {
 
   signal(SIGINT, on_sig);
   signal(SIGTERM, on_sig);
+  signal(SIGUSR1, dummy);
 
   printf("sizeof(global_module_info_t): %lu\n", sizeof(global_module_info_t));
 
   /* ---- send GET_MODULE_INFO ---- */
   can_message_t rq            = {0};
   rq.header.msg_info          = 0; /* master single */
-  rq.type0.params.module_type = MODULE_DOR12_MODULE;
-  rq.type0.params.slot_number = 6;
-  rq.type0.params.command     = CMD_GET_MODULE_INFO;
+  rq.type0.params.module_type = 0;
+  rq.type0.params.slot_number = 0;
+  rq.type0.params.command     = CMD_TIMESTAMP_SYNC;
+  rq.type0.data[0]            = 0x00;
 
-  can_write(0x3F, &rq, sizeof(rq));
+  can_write(0x3f, &rq, sizeof(rq));
+
+  usleep(500000);
+  stop_reader();
 
   puts("Press Ctrl‑C to stop …");
   while (atomic_load(&g.running))
